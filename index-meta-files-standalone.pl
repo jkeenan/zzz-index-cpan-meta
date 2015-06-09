@@ -105,6 +105,7 @@ my $db   = $mc->get_database($DB);
 my $coll = $db->get_collection($COLL);
 $coll->drop;
 $coll->ensure_index( [ name => 1 ] );
+$coll->ensure_index( [ _requires => 1 ] );
 
 say "Setting up ramdisk";
 my $ramdisk = Ramdisk->new(1024);
