@@ -50,7 +50,8 @@ for my $v ( $g->vertices ) {
     $bulk->insert(
         {
             _id => $v,
-            downstream => { map { split /:/ } @{$top{$v}} },
+            downriver_count => $nd{$v},
+            downriver_dists => { map { split /:/ } @{$top{$v}} },
         }
     );
 }
