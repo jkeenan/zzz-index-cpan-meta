@@ -14,16 +14,19 @@ my $meta_coll = $mc->ns("cpan.meta");
 
 my %river = map { $_->{_id} => $_->{downriver_count} } $river_coll->find()->all;
 my %found;
+my %author;
 
 my $c = $meta_coll->find();
 
 while ( my $d = $c->next ) {
     my $name = $d->{name};
     next unless $name && $river{$name};
+    next unless $d->{_latest};
     next if !$river{$name} || $river{$name} < 100;
     next if $d->{generated_by} =~ /Module::Build|ExtUtils::MakeMaker/;
     next if exists $d->{prereqs}{configure}{requires}{'Module::Build'};
 
+    $author{$name} = $d->{_uploader};
     if ( $d->{generated_by} =~ /Module::Install/ ) {
         $found{$name} = "generated_by M::I";
     }
@@ -33,6 +36,6 @@ while ( my $d = $c->next ) {
 }
 
 for my $d ( sort { $river{$b} <=> $river{$a} } keys %found ) {
-    printf( "%7d %-40s %s\n", $river{$d}, $d, $found{$d} );
+    printf( "%7d %-40s %12s %s\n", $river{$d}, $d, $author{$d}, $found{$d} );
 }
 
