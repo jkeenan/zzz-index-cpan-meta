@@ -5,11 +5,8 @@ use strict;
 use warnings;
 
 use MongoDB;
-use Graph;
 use boolean;
 use utf8;
-
-my $g = Graph->new;
 
 my $mc   = MongoDB::MongoClient->new;
 my $coll = $mc->ns("cpan.river");
