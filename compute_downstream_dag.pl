@@ -70,7 +70,7 @@ for my $d ( sort { $nd{$b} <=> $nd{$a} } keys %nd ) {
             : ( $core{$d} || '' ) eq 'blead' ? ' <blead-upstream> '
             :                                  '' ),
         join(" ", @{$maint{$d} || []} ),
-        join(" ", grep { defined } @{$top{$d} || []}[0..2] ),
+        join(" ", grep { defined } @{$top{$d} || []}[0..4] ),
     );
 }
 
