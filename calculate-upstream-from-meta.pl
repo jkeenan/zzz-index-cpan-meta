@@ -1,5 +1,5 @@
 #!/usr/bin/env perl
-use v5.10;
+use v5.14;
 use strict;
 use warnings;
 use CPAN::DistnameInfo;
@@ -92,6 +92,7 @@ sub worker {
             $doc->{_upstream} = [ sort( uniq(@dists_req) ) ];
 
             %{$doc} = ( %{ $meta->as_struct }, %$doc );
+            _clean_bad_keys($doc->{name}, $doc);
             $batch->insert($doc);
         }
     );
@@ -103,6 +104,21 @@ sub worker {
     catch {
         say "Block $n: MongoDB::Error: $_\n";
         say for @$chunk;
+    }
+}
+
+sub _clean_bad_keys {
+    my ($name, $doc) = @_;
+    for my $k ( keys %$doc ) {
+        my $v = $doc->{$k};
+        if ( $k =~ /\./ ) {
+            warn "Bad key '$k' in $name. Scrubbing it.\n";
+            my $new_k = $k =~ s/\./_/gr;
+            $doc->{$new_k} = delete $doc->{$k};
+        }
+        if (ref($v) eq 'HASH') {
+            _clean_bad_keys( $name, $v );
+        }
     }
 }
 
