@@ -56,7 +56,7 @@ sub worker {
             my ($meta_file) = grep { -f $_ } qw/META.json META.yml/;
 
             if ( !$meta_file ) {
-                $batch->insert($doc);
+                $batch->insert_one($doc);
                 return;
             }
 
@@ -72,7 +72,7 @@ sub worker {
             };
 
             if ( !$meta ) {
-                $batch->insert($doc);
+                $batch->insert_one($doc);
                 return;
             }
 
@@ -93,7 +93,7 @@ sub worker {
 
             %{$doc} = ( %{ $meta->as_struct }, %$doc );
             _clean_bad_keys($doc->{name}, $doc);
-            $batch->insert($doc);
+            $batch->insert_one($doc);
         }
     );
 
