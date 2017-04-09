@@ -11,7 +11,38 @@ use Parse::CPAN::Packages::Fast;
 use Tie::IxHash;
 use boolean;
 
+=head1 NAME
+
+parse-packages-to-mongodb.pl - store 02 and 06 data to MongoDB
+
+=head1 USAGE
+
+    perl parse-packages-to-mongodb.pl /path/to/cpan
+
+Example:
+
+    perl parse-packages-to-mongodb.pl /home/username/minicpan
+
+=head1 PREREQUISITES
+
+What you must install from CPAN:
+
+    CPAN::DistnameInfo
+    MongoDB
+    Parse::CPAN::Packages::Fast
+    Tie::IxHash
+    boolean
+
+What you should have from the Perl 5 core distribution:
+
+    IO::Zlib
+    Module::CoreList
+
+=cut
+
 my $CPAN = shift || '/srv/cpan';
+die "Cannot locate directory '$CPAN' for path to CPAN installation"
+    unless (-d $CPAN);
 my $DB   = 'cpan';
 my $COLL = 'packages';
 
@@ -28,6 +59,7 @@ my $mc   = MongoDB::MongoClient->new;
 my $coll = $mc->get_database($DB)->get_collection($COLL);
 $coll->drop;
 $coll->ensure_index( [ dist => 1 ] );
+#$coll->indexes( [ dist => 1 ] );
 
 my $bulk = $coll->unordered_bulk;
 
@@ -54,7 +86,7 @@ for my $pkg ( $p->packages ) {
         maintainers => $pkg_to_maint{$pkg}{maint},
         ( $core ? ( distcore => $upstream ) : () ),
     );
-    $bulk->insert($doc);
+    $bulk->insert_one($doc);
 }
 
 say "Sending to database";
