@@ -9,8 +9,39 @@ use Cwd;
 use List::MoreUtils qw/uniq/;
 use MongoDB;
 use Parallel::ForkManager;
-use Ramdisk;
+#use Ramdisk;
+#use Sys::Ramdisk;
 use Try::Tiny;
+use Getopt::Long;
+use File::HomeDir;
+
+=pod
+
+GetOptions ("length=i" => \$length,    # numeric
+                  "file=s"   => \$data,      # string
+                  "verbose"  => \$verbose)   # flag
+      or die("Error in command line arguments\n");
+
+=cut
+
+my $home = File::HomeDir->my_home;
+my $JOBS = 4;
+my $CPAN = "$home/minicpan";
+#my $tdir = "$home/tmp/ramdisk";
+my $verbose = '';
+
+GetOptions(
+    "jobs=i"        => \$JOBS,
+    "CPAN=s"        => \$CPAN,
+    #    "ramdisk=s"     => \$tdir,
+    "verbose"       => \$verbose,
+) or die "Error in command-line arguments: $!";
+unless (-d $CPAN) {
+    die "Unable to locate '$CPAN' to serve as root of CPAN installation: $!";
+}
+#unless (-d $tdir) {
+#    mkdir $tdir or die "Unable to mkdir '$tdir' prior to use as ramdisk: $!";
+#}
 
 #--------------------------------------------------------------------------#
 # worker function
@@ -56,7 +87,8 @@ sub worker {
             my ($meta_file) = grep { -f $_ } qw/META.json META.yml/;
 
             if ( !$meta_file ) {
-                $batch->insert($doc);
+                #$batch->insert($doc);
+                $batch->insert_one($doc);
                 return;
             }
 
@@ -72,7 +104,7 @@ sub worker {
             };
 
             if ( !$meta ) {
-                $batch->insert($doc);
+                $batch->insert_one($doc);
                 return;
             }
 
@@ -93,7 +125,7 @@ sub worker {
 
             %{$doc} = ( %{ $meta->as_struct }, %$doc );
             _clean_bad_keys($doc->{name}, $doc);
-            $batch->insert($doc);
+            $batch->insert_one($doc);
         }
     );
 
@@ -128,8 +160,8 @@ sub _clean_bad_keys {
 
 $|++;
 
-my $JOBS = shift || 10;
-my $CPAN = shift || '/srv/cpan';
+#my $JOBS = shift || 10;
+#my $CPAN = shift || '/srv/cpan';
 my $DB   = 'cpan';
 my $COLL = 'meta';
 my $CHUNKING = 100;
@@ -146,9 +178,14 @@ $coll->ensure_index( [ _requires => 1 ] );
 $coll->ensure_index( [ _upstream => 1 ] );
 $coll->ensure_index( [ name      => 1 ] );
 
-say "Setting up ramdisk";
-my $ramdisk = Ramdisk->new(1024);
-local $ENV{TMPDIR} = $ramdisk->root;
+#say "Setting up ramdisk";
+##my $ramdisk = Ramdisk->new(1024);
+#my $ramdisk = Sys::Ramdisk->new(
+#    size => "100m",
+#    dir  => $tdir,
+#);
+#
+#$ramdisk->mount();
 
 say "Queueing tasks...";
 my @dists =
@@ -179,4 +216,6 @@ while (@dists) {
 }
 
 $pm->wait_all_children;
+
+#$ramdisk->mount();
 exit;
