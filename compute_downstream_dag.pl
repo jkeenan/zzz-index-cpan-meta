@@ -47,7 +47,7 @@ for my $v ( $g->vertices ) {
       map { [ $_, $nd{$_} ] }
       $g->successors($v)
     ];
-    $bulk->insert(
+    $bulk->insert_one(
         {
             _id => $v,
             downriver_count => $nd{$v},
