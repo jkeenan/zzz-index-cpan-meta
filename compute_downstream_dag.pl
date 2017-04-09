@@ -8,6 +8,39 @@ use MongoDB;
 use Graph;
 use boolean;
 use utf8;
+use Getopt::Long;
+
+=head1 NAME
+
+compute_downstream_dag.pl - generate CPAN river
+
+=head1 USAGE
+
+    perl compute_downstream_dag.pl 1> cpan.river.txt 2> err
+
+    perl compute_downstream_dag.pl --csv 1> /dev/null
+
+=head1 PREREQUISITES
+
+From Perl 5 core distribution:
+
+    Getopt::Long
+    utf8
+
+From CPAN:
+
+    Graph
+    MongoDB
+    Text::CSV  # If invoked with '--csv'
+    boolean
+
+=cut
+
+my ($create_csv, $verbose) = ('') x 2;
+GetOptions(
+    "csv"           => \$create_csv,
+    "verbose"       => \$verbose,
+) or die("Error in command line arguments: $!");
 
 my $g = Graph->new;
 
@@ -58,12 +91,8 @@ for my $v ( $g->vertices ) {
 
 $bulk->execute;
 
-
-##say "Count|Distribution|Maintainers|Top 3 Downstream";
-##say "-----------------------------------------------";
-for my $d ( sort { $nd{$b} <=> $nd{$a} } keys %nd ) {
+for my $d ( sort { $nd{$b} <=> $nd{$a} || $a cmp $b } keys %nd ) {
     printf(
-##        "%6d|%s%s|[%s]|(%s)\n",
         "%6d %s%s   [%s]   (%s)\n",
         $nd{$d},
         $d,
@@ -75,3 +104,31 @@ for my $d ( sort { $nd{$b} <=> $nd{$a} } keys %nd ) {
     );
 }
 
+if ($create_csv) {
+    require Text::CSV;
+    my $csv = Text::CSV->new( { binary => 1 } )
+        or die "Cannot use CSV: " . Text::CSV->error_diag ();
+    $csv->eol("\n");
+    open my $OUT, ">:encoding(utf8)", "cpan.river.csv" or die "cpan.river.csv: $!";
+    my $header = [ qw(
+        count
+        distribution
+        core_upstream_status
+        maintainers
+        top_3_downstream
+    ) ];
+    $csv->print($OUT, $header);
+    for my $d ( sort { $nd{$b} <=> $nd{$a} || $a cmp $b } keys %nd ) {
+        my $colref = [
+            $nd{$d},
+            $d,
+            (     ( $core{$d} || '' ) eq 'cpan' ? 'cpan-upstream'
+                : ( $core{$d} || '' ) eq 'blead' ? 'blead-upstream'
+                :                                  '' ),
+            join(" ", @{$maint{$d} || []} ),
+            join(" ", grep { defined } @{$top{$d} || []}[0..4] ),
+        ];
+        $csv->print($OUT, $colref);
+    }
+    close $OUT or die "cpan.river.csv: $!";
+}
