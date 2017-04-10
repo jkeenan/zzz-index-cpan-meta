@@ -25,8 +25,10 @@ my $coll    = $db->get_collection($COLL);
 my $pkgcoll = $db->get_collection("packages");
 
 $coll->drop;
-$coll->ensure_index( [ flat_prereqs => 1 ] );
-$coll->ensure_index( [ name         => 1 ] );
+$coll->indexes->create_many(
+    { keys => [ flat_prereqs => 1 ] },
+    { keys => [ name         => 1 ] },
+);
 
 my $pm = Parallel::ForkManager->new( $JOBS > 1 ? $JOBS : 0 );
 

@@ -142,9 +142,11 @@ my $db      = $mc->get_database($DB);
 my $coll    = $db->get_collection($COLL);
 my $pkgcoll = $db->get_collection("packages");
 $coll->drop;
-$coll->ensure_index( [ _requires => 1 ] );
-$coll->ensure_index( [ _upstream => 1 ] );
-$coll->ensure_index( [ name      => 1 ] );
+$indexes->create_many(
+    { keys => [ _requires => 1 ] },
+    { keys => [ _upstream => 1 ] },
+    { keys => [ name      => 1 ] },
+);
 
 say "Setting up ramdisk";
 my $ramdisk = Ramdisk->new(1024);

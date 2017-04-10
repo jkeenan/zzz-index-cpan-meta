@@ -58,7 +58,9 @@ my %latest = map { $_ => true } map { s{^./../}{}r } map { $_->pathname } $p->la
 my $mc   = MongoDB::MongoClient->new;
 my $coll = $mc->get_database($DB)->get_collection($COLL);
 $coll->drop;
-$coll->indexes();
+$coll->indexes()->create_many(
+    { keys => [ dist => 1 ] },
+);
 
 my $bulk = $coll->unordered_bulk;
 
