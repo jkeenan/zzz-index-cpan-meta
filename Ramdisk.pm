@@ -1,3 +1,5 @@
+# This was written by Ricardo Signes to create/cleanup a ramdisk on Mac # OSX.
+
 use 5.20.0;
 use warnings;
 package Ramdisk;
