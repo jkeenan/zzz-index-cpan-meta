@@ -17,11 +17,11 @@ parse-packages-to-mongodb.pl - store 02 and 06 data to MongoDB
 
 =head1 USAGE
 
-    perl parse-packages-to-mongodb.pl /path/to/cpan
+    perl parse-packages-to-mongodb.pl /path/to/cpan [perl_version]
 
 Example:
 
-    perl parse-packages-to-mongodb.pl /home/username/minicpan
+    perl parse-packages-to-mongodb.pl /home/username/minicpan  5.024001
 
 =head1 PREREQUISITES
 
@@ -43,6 +43,9 @@ What you should have from the Perl 5 core distribution:
 my $CPAN = shift || '/srv/cpan';
 die "Cannot locate directory '$CPAN' for path to CPAN installation"
     unless (-d $CPAN);
+my $targeted_perl_version = shift || $];
+die "No data in $Module::CoreList::version for '$targeted_perl_version'"
+    unless exists $Module::CoreList::version{$targeted_perl_version};
 my $DB   = 'cpan';
 my $COLL = 'packages';
 
@@ -66,13 +69,18 @@ my $bulk = $coll->unordered_bulk;
 
 my $cnt = 0;
 say "Iterating packages...";
+
+my %current_core = ();
+while (my ($k, $v) = each %{$Module::CoreList::version{$targeted_perl_version}}) {
+    $current_core{$k} = $v;
+}
+
 STDOUT->autoflush(1);
 for my $pkg ( $p->packages ) {
     print "." if ++$cnt % 100 == 0;
     my $p = $p->package($pkg);
     my $d = $p->distribution;
     my $distfile = $d->pathname =~ s{^./../}{}r;
-    my $core = Module::CoreList->is_core($pkg);
     my $upstream = $Module::CoreList::upstream{$pkg} || 'blead';
     my $doc = Tie::IxHash->new(
         _id => $pkg,
@@ -85,7 +93,7 @@ for my $pkg ( $p->packages ) {
         uploader => $d->cpanid,
         authority => $pkg_to_maint{$pkg}{auth},
         maintainers => $pkg_to_maint{$pkg}{maint},
-        ( $core ? ( distcore => $upstream ) : () ),
+        ( exists $current_core{$pkg} ? ( distcore => $upstream ) : () ),
     );
     $bulk->insert_one($doc);
 }
