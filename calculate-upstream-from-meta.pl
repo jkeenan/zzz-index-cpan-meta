@@ -142,7 +142,7 @@ my $db      = $mc->get_database($DB);
 my $coll    = $db->get_collection($COLL);
 my $pkgcoll = $db->get_collection("packages");
 $coll->drop;
-$indexes->create_many(
+$coll->indexes->create_many(
     { keys => [ _requires => 1 ] },
     { keys => [ _upstream => 1 ] },
     { keys => [ name      => 1 ] },
