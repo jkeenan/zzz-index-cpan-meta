@@ -92,7 +92,7 @@ my %top;
 for my $v ( $g->vertices ) {
     $top{$v} = [
       map { "$_->[0]:$_->[1]" }
-      sort { $b->[1] <=> $a->[1] }
+      sort { $b->[1] <=> $a->[1] || $a->[0] cmp $b->[0] }
       map { [ $_, $nd{$_} ] }
       $g->successors($v)
     ];
