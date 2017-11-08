@@ -115,7 +115,7 @@ if ($create_csv) {
         distribution
         core_upstream_status
         maintainers
-        top_3_downstream
+        top_5_downstream
     ) ];
     $csv->print($OUT, $header);
     for my $d ( sort { $nd{$b} <=> $nd{$a} || $a cmp $b } keys %nd ) {
