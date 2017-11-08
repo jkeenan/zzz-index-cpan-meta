@@ -16,9 +16,24 @@ compute_downstream_dag.pl - generate CPAN river
 
 =head1 USAGE
 
+=over 4
+
+=item * Traditional: print to STDOUT, then re-direct to file
+
     perl compute_downstream_dag.pl 1> cpan.river.txt 2> err
 
+=item * Output to CSV file named F<cpan.river.csv>
+
     perl compute_downstream_dag.pl --csv 1> /dev/null
+
+=item * Output to CSV file with name provided by user
+
+    perl compute_downstream_dag.pl \
+        --csv \
+        --file=/path/to/20171107.cpan.river.csv \
+        1> /dev/null
+
+=back
 
 =head1 PREREQUISITES
 
@@ -36,10 +51,11 @@ From CPAN:
 
 =cut
 
-my ($create_csv, $verbose) = ('') x 2;
+my ($create_csv, $outputfile, $verbose) = ('') x 2;
 GetOptions(
     "csv"           => \$create_csv,
     "verbose"       => \$verbose,
+    "file=s"        => \$outputfile,
 ) or die("Error in command line arguments: $!");
 
 my $g = Graph->new;
@@ -109,7 +125,9 @@ if ($create_csv) {
     my $csv = Text::CSV->new( { binary => 1 } )
         or die "Cannot use CSV: " . Text::CSV->error_diag ();
     $csv->eol("\n");
-    open my $OUT, ">:encoding(utf8)", "cpan.river.csv" or die "cpan.river.csv: $!";
+    $outputfile ||= "cpan.river.csv";
+    open my $OUT, ">:encoding(utf8)", $outputfile
+        or die "Cannot open $outputfile for writing: $!";
     my $header = [ qw(
         count
         distribution
@@ -130,5 +148,5 @@ if ($create_csv) {
         ];
         $csv->print($OUT, $colref);
     }
-    close $OUT or die "cpan.river.csv: $!";
+    close $OUT or die "Cannot close $outputfile after writing: $!";
 }
