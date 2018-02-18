@@ -90,7 +90,7 @@ my %top;
 for my $v ( $g->vertices ) {
     $top{$v} = [
       map { "$_->[0]:$_->[1]" }
-      sort { $b->[1] <=> $a->[1] || $a cmp $b }
+      sort { $b->[1] <=> $a->[1] || $a->[0] cmp $b->[0] }
       map { [ $_, $revdepcounts{$_} ] }
       $g->successors($v)
     ];
@@ -114,7 +114,7 @@ $bulk->execute;
     # itself has a dependency.
 
     if ($verbose) {
-        my $this_module = 'List-Compare';
+        my $this_module = 'parent';
         my @this_all_successors = $g->all_successors($this_module);
         my @this_all_predecessors = $g->all_predecessors($this_module);
         say STDERR "$this_module: all_successors";
