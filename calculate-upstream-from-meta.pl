@@ -15,10 +15,10 @@ use File::HomeDir;
 
 =pod
 
-GetOptions ("length=i" => \$length,    # numeric
-    "file=s"   => \$data,      # string
-    "verbose"  => \$verbose)   # flag
-or die("Error in command line arguments\n");
+    perl calculate_upstream_from_meta.pl \
+        --jobs=8 \
+        --CPAN=/home/jkeenan/minicpan \
+        --verbose
 
 =cut
 
