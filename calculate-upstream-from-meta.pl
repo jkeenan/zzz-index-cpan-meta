@@ -15,7 +15,7 @@ use File::HomeDir;
 
 =pod
 
-    perl calculate_upstream_from_meta.pl \
+    perl calculate-upstream-from-meta.pl \
         --jobs=8 \
         --CPAN=/home/jkeenan/minicpan \
         --verbose
