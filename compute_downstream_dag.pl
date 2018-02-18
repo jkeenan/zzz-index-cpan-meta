@@ -8,6 +8,27 @@ use MongoDB;
 use Graph;
 use boolean;
 use utf8;
+use Getopt::Long;
+use Text::CSV;
+use Carp;
+
+=pod
+
+    perl compute_downstream_dag.pl \
+        --csvout=/path/to/output.csv \
+        --show_downstream=5 \
+        --verbose
+
+=cut
+
+my ($csvout, $show_downstream, $verbose) = ('') x 3;
+GetOptions(
+    "csvout=s"          => \$csvout,
+    "show_downstream=i" => \$show_downstream,
+    "verbose"           => \$verbose,
+) or croak("Error in command line arguments");
+$csvout ||= 'output.csv';
+$show_downstream ||= 5;
 
 my $g = Graph->new;
 
@@ -31,10 +52,23 @@ while ( my $doc = $c->next ) {
         $g->add_edge( $_, $to ) for @$arcs;
     }
 }
+if ($verbose) {
+    say STDERR "\%maint";
+    for my $k (sort keys %maint) { say STDERR join('|' => $k, join(' ' => @{$maint{$k}})); }
+    say STDERR "";
+    say STDERR "\%core";
+    for my $k (sort keys %core) { say STDERR join('|' => $k, $core{$k}); }
+    say STDERR "";
+}
 
-my %nd;
+my %revdepcounts;
 for my $v ( $g->vertices ) {
-    $nd{$v} =()= $g->all_successors($v);
+    $revdepcounts{$v} =()= $g->all_successors($v);
+}
+if ($verbose) {
+    say STDERR "\%revdepcounts after invoking all_successors";
+    for my $k (sort keys %revdepcounts) { say STDERR join('|' => $k, $revdepcounts{$k}); }
+    say STDERR "";
 }
 
 my $bulk = $rivercoll->unordered_bulk;
@@ -44,34 +78,45 @@ for my $v ( $g->vertices ) {
     $top{$v} = [
       map { "$_->[0]:$_->[1]" }
       sort { $b->[1] <=> $a->[1] }
-      map { [ $_, $nd{$_} ] }
+      map { [ $_, $revdepcounts{$_} ] }
       $g->successors($v)
     ];
     $bulk->insert_one(
         {
             _id => $v,
-            downriver_count => $nd{$v},
+            downriver_count => $revdepcounts{$v},
             downriver_dists => { map { split /:/ } @{$top{$v}} },
         }
     );
 }
-
 $bulk->execute;
 
+my $csv = Text::CSV->new( {
+    binary => 1,
+    eol => "\n",
+    sep_char => ',',
+} ) or croak "Cannot use CSV: " . Text::CSV->error_diag ();
 
-##say "Count|Distribution|Maintainers|Top 3 Downstream";
-##say "-----------------------------------------------";
-for my $d ( sort { $nd{$b} <=> $nd{$a} } keys %nd ) {
-    printf(
-##        "%6d|%s%s|[%s]|(%s)\n",
-        "%6d %s%s   [%s]   (%s)\n",
-        $nd{$d},
+open my $FH, ">:encoding(utf8)", $csvout
+    or croak "Unable to open $csvout for writing";
+$csv->print(
+    $FH,
+    [ "Count", "Distribution", "Upstream Status",
+        "Maintainers", "Top $show_downstream Downstream" ]
+);
+for my $d ( sort { $revdepcounts{$b} <=> $revdepcounts{$a} } keys %revdepcounts ) {
+    my $row = [
+        $revdepcounts{$d},
         $d,
-        (     ( $core{$d} || '' ) eq 'cpan' ? ' <cpan-upstream> '
-            : ( $core{$d} || '' ) eq 'blead' ? ' <blead-upstream> '
+        (     ( $core{$d} || '' ) eq 'cpan'  ? 'cpan-upstream'
+            : ( $core{$d} || '' ) eq 'blead' ? 'blead-upstream'
             :                                  '' ),
         join(" ", @{$maint{$d} || []} ),
-        join(" ", grep { defined } @{$top{$d} || []}[0..4] ),
-    );
+        join(" ", grep { defined } @{$top{$d} || []}[0 .. ($show_downstream - 1)] ),
+    ];
+    $csv->print($FH, $row) or croak "Unable to print @$row";
 }
+close $FH or croak "Unable to close $csvout after writing";
+
+say "See results in: $csvout" if $verbose;
 
