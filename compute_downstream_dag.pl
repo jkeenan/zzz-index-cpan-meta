@@ -71,13 +71,26 @@ if ($verbose) {
     say STDERR "";
 }
 
+#####
+my %alt = ();
+for my $v ( $g->vertices ) {
+    $alt{$v} =()= $g->all_predecessors($v);
+}
+if ($verbose) {
+    say STDERR "\%alt after invoking all_predecessors";
+    for my $k (sort keys %alt) { say STDERR join('|' => $k, $alt{$k}); }
+    say STDERR "";
+}
+#####
+
+
 my $bulk = $rivercoll->unordered_bulk;
 
 my %top;
 for my $v ( $g->vertices ) {
     $top{$v} = [
       map { "$_->[0]:$_->[1]" }
-      sort { $b->[1] <=> $a->[1] }
+      sort { $b->[1] <=> $a->[1] || $a cmp $b }
       map { [ $_, $revdepcounts{$_} ] }
       $g->successors($v)
     ];
@@ -90,6 +103,32 @@ for my $v ( $g->vertices ) {
     );
 }
 $bulk->execute;
+
+#####
+
+{
+    # The following demonstrates that, with respect to the setup in this program,
+    # 'all_successors' are all the distros that are dependent upon the module in
+    # question -- the "revdeps".
+    # 'all_predecessors' are all the distros upon which the module in question
+    # itself has a dependency.
+
+    if ($verbose) {
+        my $this_module = 'List-Compare';
+        my @this_all_successors = $g->all_successors($this_module);
+        my @this_all_predecessors = $g->all_predecessors($this_module);
+        say STDERR "$this_module: all_successors";
+        say STDERR "@this_all_successors";
+        say STDERR "$this_module: all_predecessors";
+        say STDERR "@this_all_predecessors";
+        say STDERR "";
+        say STDERR "$this_module: immediate downriver dists:count of their all_successors";
+        say STDERR "@{$top{$this_module}}";
+        say STDERR "";
+    }
+}
+
+#####
 
 my $csv = Text::CSV->new( {
     binary => 1,
@@ -104,7 +143,7 @@ $csv->print(
     [ "Count", "Distribution", "Upstream Status",
         "Maintainers", "Top $show_downstream Downstream" ]
 );
-for my $d ( sort { $revdepcounts{$b} <=> $revdepcounts{$a} } keys %revdepcounts ) {
+for my $d ( sort { $revdepcounts{$b} <=> $revdepcounts{$a} || $a cmp $b } keys %revdepcounts ) {
     my $row = [
         $revdepcounts{$d},
         $d,
