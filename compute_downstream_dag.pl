@@ -37,10 +37,14 @@ my $coll = $mc->ns("cpan.meta");
 my $rivercoll = $mc->ns("cpan.river");
 $rivercoll->drop;
 
-my $c = $coll->find({_latest => true})->fields({name => 1, _maintainers => 1, _upstream => 1, _core => 1});
+my $c = $coll->find({_latest => true})->fields({
+        name => 1, _maintainers => 1, _upstream => 1, _core => 1,
+        _uploader => 1,
+});
 
 my %maint;
 my %core;
+my %uploaders;
 
 # Iterate through the collection, (a) establishing a vertex in the Graph
 # object for each distribution, (b) populating lookup tables for a it's
@@ -53,6 +57,7 @@ while ( my $doc = $c->next ) {
     $g->add_vertex($to);
     $maint{$to} = $doc->{_maintainers} // [];
     $core{$to} = $doc->{_core} // '';
+    $uploaders{$to} = $doc->{_uploader} // '';
     if ( my $arcs = $doc->{_upstream} ) {
         # foreach distribution in @$arcs, $_ is dependent on $to
         $g->add_edge( $_, $to ) for @$arcs;
@@ -68,8 +73,19 @@ if ($verbose) {
 }
 
 my %revdepcounts;
+my %qp;
 for my $v ( $g->vertices ) {
-    $revdepcounts{$v} =()= $g->all_successors($v);
+    $qp{$v} = 0;
+    my @revdeps = $g->all_successors($v);
+    $revdepcounts{$v} = scalar(@revdeps);
+    for my $distro (@revdeps) {
+        for my $maintainer (@{$maint{$distro}}) {
+            if ($maintainer ne $uploaders{$v}) {
+                $qp{$v} = 1;
+                last;
+            }
+        }
+    }
 }
 if ($verbose) {
     say STDERR "\%revdepcounts after invoking all_successors";
