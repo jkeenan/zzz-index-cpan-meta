@@ -11,6 +11,7 @@ use utf8;
 use Getopt::Long;
 use Text::CSV;
 use Carp;
+use Data::Dump qw(dd pp);
 
 =pod
 
@@ -74,13 +75,23 @@ if ($verbose) {
 
 my %revdepcounts;
 my %qp;
+my @lack_uploaders = ();
 for my $v ( $g->vertices ) {
+    if (! defined $uploaders{$v}) { push @lack_uploaders, $v; }
     $qp{$v} = 0;
     my @revdeps = $g->all_successors($v);
     $revdepcounts{$v} = scalar(@revdeps);
     for my $distro (@revdeps) {
         for my $maintainer (@{$maint{$distro}}) {
-            if ($maintainer ne $uploaders{$v}) {
+            if (! defined $maintainer) {
+                say STDERR "MMM: maintainer not defined for $distro";
+                next;
+            }
+            if ((defined $uploaders{$v}) and ($maintainer ne $uploaders{$v})) {
+                # Distros without a defined uploader in MongoDB, per above
+                # statement, retain qp 0.
+                # Have to decide whether that is feature or bug from point of
+                # view of using in test-against-dev.
                 $qp{$v} = 1;
                 last;
             }
@@ -90,6 +101,9 @@ for my $v ( $g->vertices ) {
 if ($verbose) {
     say STDERR "\%revdepcounts after invoking all_successors";
     for my $k (sort keys %revdepcounts) { say STDERR join('|' => $k, $revdepcounts{$k}); }
+    say STDERR "";
+    say STDERR "\@lack_uploaders";
+    if (@lack_uploaders) { pp( [ sort @lack_uploaders ] ); }
     say STDERR "";
 }
 
@@ -140,7 +154,7 @@ $bulk->execute;
     # itself has a dependency.
 
     if ($verbose) {
-        my $this_module = 'parent';
+        my $this_module = 'List-Compare';
         my @this_all_successors = $g->all_successors($this_module);
         my @this_all_predecessors = $g->all_predecessors($this_module);
         say STDERR "$this_module: all_successors";
@@ -169,7 +183,11 @@ $csv->print(
     [ "Count", "Distribution", "Upstream Status",
         "Maintainers", "Top $show_downstream Downstream" ]
 );
-for my $d ( sort { $revdepcounts{$b} <=> $revdepcounts{$a} || $a cmp $b } keys %revdepcounts ) {
+for my $d ( sort {
+        $qp{$b} <=> $qp{$a} ||
+        $revdepcounts{$b} <=> $revdepcounts{$a} ||
+        $a cmp $b
+    } keys %revdepcounts ) {
     my $row = [
         $revdepcounts{$d},
         $d,
