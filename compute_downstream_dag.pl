@@ -42,6 +42,11 @@ my $c = $coll->find({_latest => true})->fields({name => 1, _maintainers => 1, _u
 my %maint;
 my %core;
 
+# Iterate through the collection, (a) establishing a vertex in the Graph
+# object for each distribution, (b) populating lookup tables for a it's
+# maintainers and "core-ness" and (c) establishing edges to that vertex
+# representing reverse dependencies, i.e., A, B and C are dependent on X.
+
 while ( my $doc = $c->next ) {
     my $to = $doc->{name}
         or next;
@@ -49,6 +54,7 @@ while ( my $doc = $c->next ) {
     $maint{$to} = $doc->{_maintainers} // [];
     $core{$to} = $doc->{_core} // '';
     if ( my $arcs = $doc->{_upstream} ) {
+        # foreach distribution in @$arcs, $_ is dependent on $to
         $g->add_edge( $_, $to ) for @$arcs;
     }
 }
