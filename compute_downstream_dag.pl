@@ -92,6 +92,10 @@ if ($verbose) {
 
 my $bulk = $rivercoll->unordered_bulk;
 
+# %top is a table in which we will look up a given distro's $show_downstream
+# top revdeps.  We will use that in printing the CSV output file, but first we
+# store that information back in the MongoDB.
+
 my %top;
 for my $v ( $g->vertices ) {
     $top{$v} = [
