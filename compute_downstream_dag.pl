@@ -77,7 +77,12 @@ my %revdepcounts;
 my %qp;
 my @lack_uploaders = ();
 for my $v ( $g->vertices ) {
-    if (! defined $uploaders{$v}) { push @lack_uploaders, $v; }
+    if (
+        (! defined $uploaders{$v}) and
+        ($v ne 'perl')
+    ) {
+        push @lack_uploaders, $v;
+    }
     $qp{$v} = 0;
     my @revdeps = $g->all_successors($v);
     $revdepcounts{$v} = scalar(@revdeps);
@@ -88,10 +93,12 @@ for my $v ( $g->vertices ) {
                 next;
             }
             if ((defined $uploaders{$v}) and ($maintainer ne $uploaders{$v})) {
+
                 # Distros without a defined uploader in MongoDB, per above
                 # statement, retain qp 0.
                 # Have to decide whether that is feature or bug from point of
                 # view of using in test-against-dev.
+
                 $qp{$v} = 1;
                 last;
             }
