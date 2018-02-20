@@ -18,31 +18,46 @@ use Data::Dump qw(dd pp);
     perl compute_downstream_dag.pl \
         --csvout=/path/to/output.csv \
         --show_downstream=5 \
-        --verbose
+        --verbose \
+        --debug 2>dump
 
 =cut
 
-my ($csvout, $show_downstream, $verbose) = ('') x 3;
+my ($csvout, $show_downstream, $verbose, $debug) = ('') x 4;
 GetOptions(
     "csvout=s"          => \$csvout,
     "show_downstream=i" => \$show_downstream,
     "verbose"           => \$verbose,
+    "debug"             => \$debug,
 ) or croak("Error in command line arguments");
 $csvout ||= 'output.csv';
 $show_downstream ||= 5;
 
-my $g = Graph->new;
-
 my $mc = MongoDB::MongoClient->new;
-my $coll = $mc->ns("cpan.meta");
-my $rivercoll = $mc->ns("cpan.river");
+
+# MongoDB::MongoClient->get_namespace():
+#   get a MongoDB::Collection instance for the given namespace
+#   convention: "database:collection"
+
+my $coll = $mc->get_namespace("cpan.meta");     # Created in calculate-upstream-from-meta.pl
+my $rivercoll = $mc->get_namespace("cpan.river");
+
+# MongoDB::Collection->drop(): deletes a collection as well as all of its indexes
+
 $rivercoll->drop;
 
-my $c = $coll->find({_latest => true})->fields({
-        name => 1, _maintainers => 1, _upstream => 1, _core => 1,
-        _uploader => 1,
+# MongoDB::Collection->find(): executes a query with a filter expression;
+# returns a MongoDB::Cursor object.
+
+my $cursor = $coll->find({_latest => true})->fields({
+    name            => 1,
+    _maintainers    => 1,
+    _upstream       => 1,
+    _core           => 1,
+    _uploader       => 1,
 });
 
+my $g = Graph->new;
 my %maint;
 my %core;
 my %uploaders;
@@ -52,7 +67,7 @@ my %uploaders;
 # maintainers and "core-ness" and (c) establishing edges to that vertex
 # representing reverse dependencies, i.e., A, B and C are dependent on X.
 
-while ( my $doc = $c->next ) {
+while ( my $doc = $cursor->next ) {
     my $to = $doc->{name}
         or next;
     $g->add_vertex($to);
@@ -64,7 +79,7 @@ while ( my $doc = $c->next ) {
         $g->add_edge( $_, $to ) for @$arcs;
     }
 }
-if ($verbose) {
+if ($debug) {
     say STDERR "\%maint";
     for my $k (sort keys %maint) { say STDERR join('|' => $k, join(' ' => @{$maint{$k}})); }
     say STDERR "";
@@ -105,7 +120,7 @@ for my $v ( $g->vertices ) {
         }
     }
 }
-if ($verbose) {
+if ($debug) {
     say STDERR "\%revdepcounts after invoking all_successors";
     for my $k (sort keys %revdepcounts) { say STDERR join('|' => $k, $revdepcounts{$k}); }
     say STDERR "";
@@ -119,7 +134,7 @@ my %alt = ();
 for my $v ( $g->vertices ) {
     $alt{$v} =()= $g->all_predecessors($v);
 }
-if ($verbose) {
+if ($debug) {
     say STDERR "\%alt after invoking all_predecessors";
     for my $k (sort keys %alt) { say STDERR join('|' => $k, $alt{$k}); }
     say STDERR "";
@@ -160,12 +175,13 @@ $bulk->execute;
     # 'all_predecessors' are all the distros upon which the module in question
     # itself has a dependency.
 
-    if ($verbose) {
+    if ($debug) {
         my $this_module = 'List-Compare';
         my @this_all_successors = $g->all_successors($this_module);
         my @this_all_predecessors = $g->all_predecessors($this_module);
         say STDERR "$this_module: all_successors";
         say STDERR "@this_all_successors";
+        say STDERR "";
         say STDERR "$this_module: all_predecessors";
         say STDERR "@this_all_predecessors";
         say STDERR "";
