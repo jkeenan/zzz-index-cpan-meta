@@ -18,20 +18,25 @@ use Data::Dump qw(dd pp);
     perl compute_downstream_dag.pl \
         --csvout=/path/to/output.csv \
         --show_downstream=5 \
+        --sort=trad \
         --verbose \
         --debug 2>dump
 
 =cut
 
-my ($csvout, $show_downstream, $verbose, $debug) = ('') x 4;
+my ($csvout, $show_downstream, $sort_formula, $verbose, $debug) = ('') x 5;
 GetOptions(
     "csvout=s"          => \$csvout,
     "show_downstream=i" => \$show_downstream,
+    "sort=s"            => \$sort_formula,
     "verbose"           => \$verbose,
     "debug"             => \$debug,
 ) or croak("Error in command line arguments");
 $csvout ||= 'output.csv';
 $show_downstream ||= 5;
+my %eligible_sort_formulas = map {$_ => 1} qw( trad qp );
+croak "Formula for sort must be 'trad' or 'qp'"
+    unless $eligible_sort_formulas{$sort_formula};
 
 my $mc = MongoDB::MongoClient->new;
 
@@ -91,7 +96,7 @@ if ($debug) {
 my %revdepcounts;
 my %qp;
 my @lack_uploaders = ();
-for my $v ( $g->vertices ) {
+VERTICES: for my $v ( $g->vertices ) {
     if (
         (! defined $uploaders{$v}) and
         ($v ne 'perl')
@@ -101,6 +106,8 @@ for my $v ( $g->vertices ) {
     $qp{$v} = 0;
     my @revdeps = $g->all_successors($v);
     $revdepcounts{$v} = scalar(@revdeps);
+    next VERTICES if $sort_formula eq 'trad';
+
     for my $distro (@revdeps) {
         for my $maintainer (@{$maint{$distro}}) {
             if (! defined $maintainer) {
@@ -206,11 +213,17 @@ $csv->print(
     [ "Count", "Distribution", "Upstream Status",
         "Maintainers", "Top $show_downstream Downstream" ]
 );
-for my $d ( sort {
-        $qp{$b} <=> $qp{$a} ||
-        $revdepcounts{$b} <=> $revdepcounts{$a} ||
-        $a cmp $b
-    } keys %revdepcounts ) {
+
+my %sort_routines = (
+    qp   => sub {
+        $qp{$b} <=> $qp{$a} || $revdepcounts{$b} <=> $revdepcounts{$a} || $a cmp $b
+    },
+    trad => sub {
+                               $revdepcounts{$b} <=> $revdepcounts{$a} || $a cmp $b
+    },
+);
+my @sorted_keys = sort { &{$sort_routines{$sort_formula}} } keys %revdepcounts;
+for my $d ( @sorted_keys ) {
     my $row = [
         $revdepcounts{$d},
         $d,
