@@ -97,10 +97,7 @@ my %revdepcounts;
 my %qp;
 my @lack_uploaders = ();
 VERTICES: for my $v ( $g->vertices ) {
-    if (
-        (! defined $uploaders{$v}) and
-        ($v ne 'perl')
-    ) {
+    if (! defined $uploaders{$v}) {
         push @lack_uploaders, $v;
     }
     $qp{$v} = 0;
