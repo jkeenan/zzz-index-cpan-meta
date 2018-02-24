@@ -3,7 +3,6 @@ use v5.10;
 use strict;
 use warnings;
 
-use CPAN::DistnameInfo;
 use IO::Zlib;
 use MongoDB;
 use Module::CoreList;
@@ -27,7 +26,6 @@ Example:
 
 What you must install from CPAN:
 
-    CPAN::DistnameInfo
     MongoDB
     Parse::CPAN::Packages::Fast
     Tie::IxHash
