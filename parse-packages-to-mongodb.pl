@@ -3,6 +3,9 @@ use v5.10;
 use strict;
 use warnings;
 
+use Carp;
+use File::Spec;
+use Getopt::Long;
 use IO::Zlib;
 use MongoDB;
 use Module::CoreList;
@@ -16,11 +19,7 @@ parse-packages-to-mongodb.pl - store 02 and 06 data to MongoDB
 
 =head1 USAGE
 
-    perl parse-packages-to-mongodb.pl /path/to/cpan
-
-Example:
-
-    perl parse-packages-to-mongodb.pl /home/username/minicpan
+    perl parse-packages-to-mongodb.pl --repository=/path/to/cpan
 
 =head1 PREREQUISITES
 
@@ -33,37 +32,70 @@ What you must install from CPAN:
 
 What you should have from the Perl 5 core distribution:
 
+    Carp
+    File::Spec
+    Getopt::Long
     IO::Zlib
     Module::CoreList
 
+=head1 DESCRIPTION
+
+F<parse-packages-to-mongodb.pl> creates a MongoDB B<collection> named
+C<packages> which is indexed on the names of Perl packages found on CPAN or in
+a F<minicpan> repository.  The collection also includes data from the CPAN
+F<modules/06perms.txt.gz> and F<modules/02packages.details.txt.gz> files as
+well as Module::CoreList data.
+
+In this context, "packages" are spelled with double-colon separators
+(C<List::Compare>) rather than with the hyphens (C<List-Compare>) used for
+CPAN distributions.
+
+The collection has information about the package's version, distribution,
+etc., as well as the package's first-come authority and maintainers.
+Subsequent programs look up data based just on the package name.
+
 =cut
 
-my $CPAN = shift || '/srv/cpan';
-die "Cannot locate directory '$CPAN' for path to CPAN installation"
+my ($CPAN, $hacking, $verbose) = ('') x 3;
+GetOptions(
+    "repository=s"      => \$CPAN,
+    "hacking"           => \$hacking,
+    "verbose"           => \$verbose,
+) or croak("Error in command line arguments");
+
+$CPAN ||= File::Spec->catdir($ENV{HOMEDIR}, 'minicpan');
+croak "Cannot locate directory '$CPAN' for path to CPAN installation"
     unless (-d $CPAN);
-my $DB   = 'cpan';
-my $COLL = 'packages';
 
+my $perms       = File::Spec->catfile($CPAN, 'modules', '06perms.txt.gz');
 say "Parsing 06perms...";
-my $fh = IO::Zlib->new( "$CPAN/modules/06perms.txt.gz", "rb" );
+my $fh = IO::Zlib->new( $perms, "rb")
+    or croak "Unable to open $perms for reading";
 my %pkg_to_maint = _read_perms($fh);
+close $fh or croak "Unable to close $perms after reading";
 
+my $packages    = File::Spec->catfile($CPAN, 'modules', '02packages.details.txt.gz');
 say "Parsing 02packages...";
-my $p = Parse::CPAN::Packages::Fast->new("$CPAN/modules/02packages.details.txt.gz");
+my $p = Parse::CPAN::Packages::Fast->new($packages)
+    or croak "Unable to parse $packages";
 
 my %latest = map { $_ => true } map { s{^./../}{}r } map { $_->pathname } $p->latest_distributions;
 
-my $mc   = MongoDB::MongoClient->new;
-my $coll = $mc->get_database($DB)->get_collection($COLL);
-$coll->drop;
-$coll->indexes();
+my ($DB, $COLL, $mc, $coll) = ('') x 4;
+#my $DB   = 'cpan';
+#my $COLL = 'packages';
+#my $mc   = MongoDB::MongoClient->new;
+#my $coll = $mc->get_database($DB)->get_collection($COLL);
+#$coll->drop;
+#$coll->indexes();
 
-my $bulk = $coll->unordered_bulk;
+#my $bulk = $coll->unordered_bulk;
 
 my $cnt = 0;
 say "Iterating packages...";
 STDOUT->autoflush(1);
 for my $pkg ( $p->packages ) {
+    say "XXX: <$pkg>";
     print "." if ++$cnt % 100 == 0;
     my $p = $p->package($pkg);
     my $d = $p->distribution;
@@ -83,11 +115,11 @@ for my $pkg ( $p->packages ) {
         maintainers => $pkg_to_maint{$pkg}{maint},
         ( $core ? ( distcore => $upstream ) : () ),
     );
-    $bulk->insert_one($doc);
+    #    $bulk->insert_one($doc);
 }
 
-say "Sending to database";
-$bulk->execute;
+#say "Sending to database";
+#$bulk->execute;
 
 exit;
 
