@@ -2,51 +2,78 @@
 use v5.14;
 use strict;
 use warnings;
+
+use Carp;
+use Cwd;
+use Getopt::Long;
+
 use CPAN::DistnameInfo;
 use CPAN::Meta;
 use CPAN::Visitor;
-use Cwd;
 use List::MoreUtils qw/uniq/;
 use MongoDB;
 use Parallel::ForkManager;
 use Try::Tiny;
-use Getopt::Long;
-use File::HomeDir;
 
-=pod
+=head1 NAME
+
+calculate-upstream-from-meta.pl - determine upstream requirements for a CPAN distribution
+
+=head1 USAGE
 
     perl calculate-upstream-from-meta.pl \
         --jobs=8 \
-        --CPAN=/home/jkeenan/minicpan \
+        --repository=/path/to/minicpan \
         --verbose
+
+=head1 PREREQUISITES
+
+What you must install from CPAN:
+
+    CPAN::DistnameInfo
+    CPAN::Meta
+    CPAN::Visitor
+    List::MoreUtils qw/uniq/
+    MongoDB
+    Parallel::ForkManager
+    Try::Tiny
+
+What you should have from the Perl 5 core distribution:
+
+    Carp
+    Cwd
+    Getopt::Long
 
 =cut
 
-my $home = File::HomeDir->my_home;
-my $JOBS = 4;
-my $CPAN = "$home/minicpan";
-my $verbose = '';
-
+my ($repository, $db, $collection, $meta_collection, $jobs, $verbose) = ('') x 6;
 GetOptions(
-    "jobs=i"        => \$JOBS,
-    "CPAN=s"        => \$CPAN,
-    "verbose"       => \$verbose,
-) or die "Error in command-line arguments: $!";
-unless (-d $CPAN) {
-    die "Unable to locate '$CPAN' to serve as root of CPAN installation: $!";
-}
+    "repository=s"      => \$repository,
+    "db=s"              => \$db,
+    "collection=s"      => \$collection,
+    "meta_collection=s" => \$meta_collection,
+    "jobs=i"            => \$jobs,
+    "verbose"           => \$verbose,
+) or croak "Error in command-line arguments: $!";
+$repository ||= File::Spec->catdir($ENV{HOMEDIR}, 'minicpan');
+croak "Cannot locate directory '$repository' for path to CPAN installation"
+    unless (-d $repository);
+$db ||= 'cpan';
+$collection ||= 'packages';
+$meta_collection ||= 'meta';
+$jobs ||= 4;
 
 #--------------------------------------------------------------------------#
 # worker function
 #--------------------------------------------------------------------------#
 
 sub worker {
-    my ( $chunk, $n, $cpan_path, $db_name, $coll_name ) = @{ $_[0] };
+    my ( $chunk, $n, $cpan_path, $db_name, $coll_name, $collection ) = @{ $_[0] };
 
-    my $mc      = MongoDB::MongoClient->new;
-    my $coll    = $mc->get_database($db_name)->get_collection($coll_name);
-    my $pkgcoll = $mc->get_database($db_name)->get_collection("packages");
-    my $batch   = $coll->unordered_bulk;
+    my $mongo_client            = MongoDB::MongoClient->new;
+    my $meta_collection_object  = $mongo_client->get_database($db_name)->get_collection($coll_name);
+    my $package_collection_object = $mongo_client->get_database($db_name)->get_collection($collection);
+    my $batch   = $meta_collection_object->unordered_bulk;
 
     my $visitor = CPAN::Visitor->new(
         cpan  => $cpan_path,
@@ -62,7 +89,7 @@ sub worker {
             my $d = CPAN::DistnameInfo->new( $job->{distpath} );
 
             my @pkgs =
-              $pkgcoll->find( { distfile => $job->{distfile} } )
+              $package_collection_object->find( { distfile => $job->{distfile} } )
               ->fields( { 'maintainers' => 1, distlatest => 1, distcore => 1 } )->all;
             my @maints = sort( uniq( map { @{ $_->{maintainers} || [] } } @pkgs ) );
 
@@ -110,7 +137,7 @@ sub worker {
             # _upstream are distributions
             my @dists_req =
               map { $_->{distname} }
-              $pkgcoll->find( { _id => { '$in' => $doc->{_requires} } } )
+              $package_collection_object->find( { _id => { '$in' => $doc->{_requires} } } )
               ->fields( { distname => 1 } )->all;
 
             $doc->{_upstream} = [ sort( uniq(@dists_req) ) ];
@@ -152,28 +179,24 @@ sub _clean_bad_keys {
 
 $|++;
 
-#my $JOBS = shift || 10;
-#my $CPAN = shift || '/srv/cpan';
-my $DB   = 'cpan';
-my $COLL = 'meta';
 my $CHUNKING = 100;
 my $CWD      = Cwd::getcwd;
 my $PID      = $$;
 
-say "Prepping fresh collection $DB.$COLL";
-my $mc      = MongoDB::MongoClient->new;
-my $db      = $mc->get_database($DB);
-my $coll    = $db->get_collection($COLL);
-my $pkgcoll = $db->get_collection("packages");
-$coll->drop;
-$coll->ensure_index( [ _requires => 1 ] );
-$coll->ensure_index( [ _upstream => 1 ] );
-$coll->ensure_index( [ name      => 1 ] );
+say "Prepping fresh collection $db.$meta_collection";
+my $mongo_client  = MongoDB::MongoClient->new;
+my $mongo_db      = $mongo_client->get_database($db);
+my $meta_collection_object      = $mongo_db->get_collection($meta_collection);
+my $package_collection_object   = $mongo_db->get_collection($collection);
+$meta_collection_object->drop;
+$meta_collection_object->ensure_index( [ _requires => 1 ] );
+$meta_collection_object->ensure_index( [ _upstream => 1 ] );
+$meta_collection_object->ensure_index( [ name      => 1 ] );
 
 say "Queueing tasks...";
 my @dists =
   map { $_->{_id} }
-  $pkgcoll->aggregate(
+  $package_collection_object->aggregate(
     [ { '$group' => { _id => '$distfile' } }, { '$sort' => { _id => 1 } } ],
     { cursor => 1 } )->all;
 
@@ -181,7 +204,7 @@ say sprintf( "%d distributions to process in %d blocks",
     0+ @dists, int( @dists / $CHUNKING ) + 1 );
 
 say "Running tasks...";
-my ( $n, $pm ) = ( 0, Parallel::ForkManager->new( $JOBS > 1 ? $JOBS : 0 ) );
+my ( $n, $pm ) = ( 0, Parallel::ForkManager->new( $jobs > 1 ? $jobs : 0 ) );
 
 $SIG{INT} = sub {
     say "Caught SIGINT; Waiting for child processes";
@@ -194,7 +217,7 @@ while (@dists) {
     $n++;
     $pm->start and next;
     $SIG{INT} = sub { chdir $CWD; $pm->finish };
-    worker( [ \@chunk, $n, $CPAN, $DB, $COLL ] );
+    worker( [ \@chunk, $n, $repository, $db, $meta_collection, $collection ] );
     $pm->finish;
 }
 
