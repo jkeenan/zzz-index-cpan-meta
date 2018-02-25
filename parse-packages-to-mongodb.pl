@@ -106,7 +106,7 @@ my $cnt = 0;
 say "Iterating packages...";
 STDOUT->autoflush(1);
 for my $pkg ( $p->packages ) {
-    say $pkg if ($hacking || $verbose);
+    say $pkg if $hacking;
     print "." if ++$cnt % 100 == 0;
     my $p = $p->package($pkg);
     my $d = $p->distribution;
