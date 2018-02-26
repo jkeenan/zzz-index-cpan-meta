@@ -207,8 +207,8 @@ open my $FH, ">:encoding(utf8)", $csvout
     or croak "Unable to open $csvout for writing";
 $csv->print(
     $FH,
-    [ "Count", "Distribution", "Upstream Status",
-        "Maintainers", "Top $show_downstream Downstream" ]
+    [ "count", "distribution", "core_upstream_status",
+        "maintainers", "top_${show_downstream}_downstream" ]
 );
 
 my %sort_routines = (
