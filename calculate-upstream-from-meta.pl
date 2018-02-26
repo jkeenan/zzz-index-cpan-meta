@@ -46,6 +46,7 @@ What you should have from the Perl 5 core distribution:
 
 =cut
 
+my $start_time = time();
 my ($repository, $db, $collection, $meta_collection, $jobs, $verbose) = ('') x 6;
 GetOptions(
     "repository=s"      => \$repository,
@@ -62,6 +63,64 @@ $db ||= 'cpan';
 $collection ||= 'packages';
 $meta_collection ||= 'meta';
 $jobs ||= 4;
+
+#--------------------------------------------------------------------------#
+# main program
+#--------------------------------------------------------------------------#
+
+$|++;
+
+my $CHUNKING = 100;
+my $CWD      = Cwd::getcwd;
+my $PID      = $$;
+
+say "Prepping fresh collection $db.$meta_collection";
+my $mongo_client  = MongoDB::MongoClient->new;
+my $mongo_db      = $mongo_client->get_database($db);
+my $meta_collection_object      = $mongo_db->get_collection($meta_collection);
+my $package_collection_object   = $mongo_db->get_collection($collection);
+$meta_collection_object->drop;
+$meta_collection_object->ensure_index( [ _requires => 1 ] );
+$meta_collection_object->ensure_index( [ _upstream => 1 ] );
+$meta_collection_object->ensure_index( [ name      => 1 ] );
+
+say "Queueing tasks...";
+my @dists =
+  map { $_->{_id} }
+  $package_collection_object->aggregate(
+    [ { '$group' => { _id => '$distfile' } }, { '$sort' => { _id => 1 } } ],
+    { cursor => 1 } )->all;
+
+say sprintf( "%d distributions to process in %d blocks",
+    0+ @dists, int( @dists / $CHUNKING ) + 1 );
+
+say "Running tasks...";
+my ( $n, $pm ) = ( 0, Parallel::ForkManager->new( $jobs > 1 ? $jobs : 0 ) );
+
+$SIG{INT} = sub {
+    say "Caught SIGINT; Waiting for child processes";
+    $pm->wait_all_children;
+    exit 1;
+};
+
+while (@dists) {
+    my @chunk = splice( @dists, 0, $CHUNKING );
+    $n++;
+    $pm->start and next;
+    $SIG{INT} = sub { chdir $CWD; $pm->finish };
+    worker( [ \@chunk, $n, $repository, $db, $meta_collection, $collection ] );
+    $pm->finish;
+}
+
+$pm->wait_all_children;
+
+my $end_time = time();
+if ($verbose) {
+    say "Elapsed time: ", $end_time - $start_time, " seconds";
+    say "Finished";
+}
+
+exit;
 
 #--------------------------------------------------------------------------#
 # worker function
@@ -173,54 +232,3 @@ sub _clean_bad_keys {
     }
 }
 
-#--------------------------------------------------------------------------#
-# main program
-#--------------------------------------------------------------------------#
-
-$|++;
-
-my $CHUNKING = 100;
-my $CWD      = Cwd::getcwd;
-my $PID      = $$;
-
-say "Prepping fresh collection $db.$meta_collection";
-my $mongo_client  = MongoDB::MongoClient->new;
-my $mongo_db      = $mongo_client->get_database($db);
-my $meta_collection_object      = $mongo_db->get_collection($meta_collection);
-my $package_collection_object   = $mongo_db->get_collection($collection);
-$meta_collection_object->drop;
-$meta_collection_object->ensure_index( [ _requires => 1 ] );
-$meta_collection_object->ensure_index( [ _upstream => 1 ] );
-$meta_collection_object->ensure_index( [ name      => 1 ] );
-
-say "Queueing tasks...";
-my @dists =
-  map { $_->{_id} }
-  $package_collection_object->aggregate(
-    [ { '$group' => { _id => '$distfile' } }, { '$sort' => { _id => 1 } } ],
-    { cursor => 1 } )->all;
-
-say sprintf( "%d distributions to process in %d blocks",
-    0+ @dists, int( @dists / $CHUNKING ) + 1 );
-
-say "Running tasks...";
-my ( $n, $pm ) = ( 0, Parallel::ForkManager->new( $jobs > 1 ? $jobs : 0 ) );
-
-$SIG{INT} = sub {
-    say "Caught SIGINT; Waiting for child processes";
-    $pm->wait_all_children;
-    exit 1;
-};
-
-while (@dists) {
-    my @chunk = splice( @dists, 0, $CHUNKING );
-    $n++;
-    $pm->start and next;
-    $SIG{INT} = sub { chdir $CWD; $pm->finish };
-    worker( [ \@chunk, $n, $repository, $db, $meta_collection, $collection ] );
-    $pm->finish;
-}
-
-$pm->wait_all_children;
-
-exit;
