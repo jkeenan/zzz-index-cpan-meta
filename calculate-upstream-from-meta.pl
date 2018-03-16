@@ -149,7 +149,11 @@ sub worker {
 
             my @pkgs =
               $package_collection_object->find( { distfile => $job->{distfile} } )
-              ->fields( { 'maintainers' => 1, distlatest => 1, distcore => 1 } )->all;
+              ->fields( {
+                  maintainers   => 1,
+                  distlatest    => 1,
+                  distcore      => 1,
+              } )->all;
             my @maints = sort( uniq( map { @{ $_->{maintainers} || [] } } @pkgs ) );
 
             my ($upstream) = grep { defined } map { $_->{distcore} } @pkgs;
