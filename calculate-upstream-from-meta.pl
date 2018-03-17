@@ -150,6 +150,7 @@ sub worker {
             my @pkgs =
               $package_collection_object->find( { distfile => $job->{distfile} } )
               ->fields( {
+                  authority     => 1,
                   maintainers   => 1,
                   distlatest    => 1,
                   distcore      => 1,
@@ -162,6 +163,7 @@ sub worker {
                 _id          => $job->{distfile},
                 _upload_date => ( stat( $job->{distpath} ) )[9],
                 _uploader    => $d->cpanid,
+                _authority   => $pkgs[0]{authority},
                 _latest      => $pkgs[0]{distlatest},
                 _maintainers => \@maints,
                 ( $upstream ? ( _core => $upstream ) : () ),

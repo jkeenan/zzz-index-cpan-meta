@@ -66,6 +66,7 @@ my $g = Graph->new;
 my %maint;
 my %core;
 my %uploaders;
+my %authorities;
 
 # Iterate through the collection, (a) establishing a vertex in the Graph
 # object for each distribution, (b) populating lookup tables for a it's
@@ -79,6 +80,7 @@ while ( my $doc = $cursor->next ) {
     $maint{$to} = $doc->{_maintainers} // [];
     $core{$to} = $doc->{_core} // '';
     $uploaders{$to} = $doc->{_uploader} // '';
+    $authorities{$to} = $doc->{_authority} // '';
     if ( my $arcs = $doc->{_upstream} ) {
         # foreach distribution in @$arcs, $_ is dependent on $to
         $g->add_edge( $_, $to ) for @$arcs;
@@ -96,9 +98,13 @@ if ($debug) {
 my %revdepcounts;
 my %qp;
 my @lack_uploaders = ();
+my @lack_authorities = ();
 VERTICES: for my $v ( $g->vertices ) {
     if (! defined $uploaders{$v}) {
         push @lack_uploaders, $v;
+    }
+    if (! defined $authorities{$v}) {
+        push @lack_authorities, $v;
     }
     $qp{$v} = 0;
     my @revdeps = $g->all_successors($v);
@@ -130,6 +136,9 @@ if ($debug) {
     say STDERR "";
     say STDERR "\@lack_uploaders";
     if (@lack_uploaders) { pp( [ sort @lack_uploaders ] ); }
+    say STDERR "";
+    say STDERR "\@lack_authorities";
+    if (@lack_authorities) { pp( [ sort @lack_authorities ] ); }
     say STDERR "";
 }
 
