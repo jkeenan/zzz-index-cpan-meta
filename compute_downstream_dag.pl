@@ -24,19 +24,30 @@ use Data::Dump qw(dd pp);
 
 =cut
 
-my ($csvout, $show_downstream, $sort_formula, $verbose, $debug) = ('') x 5;
+my ($csvout, $show_downstream, $sort_formula, $verbose, $debug, $exclusions_file) = ('') x 6;
 GetOptions(
     "csvout=s"          => \$csvout,
     "show_downstream=i" => \$show_downstream,
     "sort=s"            => \$sort_formula,
     "verbose"           => \$verbose,
     "debug"             => \$debug,
+    "exclusions_file=s" => \$exclusions_file,
 ) or croak("Error in command line arguments");
 $csvout ||= 'output.csv';
 $show_downstream ||= 5;
 my %eligible_sort_formulas = map {$_ => 1} qw( trad qp );
 croak "Formula for sort must be 'trad' or 'qp'"
     unless $eligible_sort_formulas{$sort_formula};
+if (length($exclusions_file) and (! -f $exclusions_file)) {
+    croak "Could not locate exclusions_file '$exclusions_file'";
+}
+my %exclusions;
+open my $EXC, '<', $exclusions_file or croak "Unable to open $exclusions_file for reading";
+while (chomp(my $l = <$EXC>)) {
+    my @data = split /\|/, $l, 2;
+    $exclusions{$data[0]} = $data[1];
+}
+close $EXC or croak "Unable to close $exclusions_file after reading";
 
 my $mc = MongoDB::MongoClient->new;
 
@@ -124,7 +135,10 @@ VERTICES: for my $v ( $g->vertices ) {
                 # Have to decide whether that is feature or bug from point of
                 # view of using in test-against-dev.
 
-                $qp{$v} = 1;
+                $qp{$v} = 1 unless (
+                    exists $exclusions{$uploaders{$v}} and
+                    $exclusions{$uploaders{$v}} eq $maintainer
+                );
                 last;
             }
         }
