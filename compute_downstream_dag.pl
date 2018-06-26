@@ -43,7 +43,8 @@ if (length($exclusions_file) and (! -f $exclusions_file)) {
 }
 my %exclusions;
 open my $EXC, '<', $exclusions_file or croak "Unable to open $exclusions_file for reading";
-while (chomp(my $l = <$EXC>)) {
+while (my $l = <$EXC>) {
+    chomp $l;
     my @data = split /\|/, $l, 2;
     $exclusions{$data[0]} = $data[1];
 }
