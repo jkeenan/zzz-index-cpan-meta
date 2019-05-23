@@ -59,10 +59,10 @@ GetOptions(
 $repository ||= File::Spec->catdir($ENV{HOMEDIR}, 'minicpan');
 croak "Cannot locate directory '$repository' for path to CPAN installation"
     unless (-d $repository);
-$db ||= 'cpan';
-$collection ||= 'packages';
-$meta_collection ||= 'meta';
-$jobs ||= 4;
+$db                 ||= 'cpan';
+$collection         ||= 'packages';
+$meta_collection    ||= 'meta';
+$jobs               ||= 4;
 
 #--------------------------------------------------------------------------#
 # main program
@@ -80,9 +80,11 @@ my $mongo_db      = $mongo_client->get_database($db);
 my $meta_collection_object      = $mongo_db->get_collection($meta_collection);
 my $package_collection_object   = $mongo_db->get_collection($collection);
 $meta_collection_object->drop;
-$meta_collection_object->ensure_index( [ _requires => 1 ] );
-$meta_collection_object->ensure_index( [ _upstream => 1 ] );
-$meta_collection_object->ensure_index( [ name      => 1 ] );
+$meta_collection_object->indexes->create_many(
+    { keys => [ _requires => 1 ] },
+    { keys => [ _upstream => 1 ] },
+    { keys => [ name      => 1 ] },
+);
 
 say "Queueing tasks...";
 my @dists =
