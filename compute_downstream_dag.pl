@@ -3,15 +3,17 @@ use v5.10;
 use utf8;
 use strict;
 use warnings;
-
+# core
+use Carp;
+use Getopt::Long;
+use utf8;
+# xdg
 use MongoDB;
 use Graph;
 use boolean;
-use utf8;
-use Getopt::Long;
-use Text::CSV;
-use Carp;
+# jk favorites
 use Data::Dump qw(dd pp);
+use Text::CSV;
 
 =pod
 
@@ -20,7 +22,17 @@ use Data::Dump qw(dd pp);
         --show_downstream=5 \
         --sort=trad \
         --verbose \
-        --debug 2>dump
+        --debug \
+        2>dump
+
+    perl compute_downstream_dag.pl \
+        --csvout=/path/to/output.csv \
+        --show_downstream=5 \
+        --sort=qp \
+        --exclusions_file=/path/to/exclusions_file.txt \
+        --verbose \
+        --debug \
+        2>dump
 
 =cut
 
@@ -81,7 +93,7 @@ my %uploaders;
 my %authorities;
 
 # Iterate through the collection, (a) establishing a vertex in the Graph
-# object for each distribution, (b) populating lookup tables for a it's
+# object for each distribution, (b) populating lookup tables for a its
 # maintainers and "core-ness" and (c) establishing edges to that vertex
 # representing reverse dependencies, i.e., A, B and C are dependent on X.
 
